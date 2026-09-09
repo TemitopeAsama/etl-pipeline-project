@@ -54,7 +54,48 @@ fi
 
 echo "Starting transform step..."
 
-awk -F',' 'NR == 1 {print "year,Value,Units,variable_code"} NR > 1 {print $1","$9","$5","$6}' "$RAW_FILE" > "$TRANSFORMED_FILE"
+awk '
+# split a CSV line into fields, respecting "quoted, commas"
+function split_csv(line,    n, i, ch, field, in_quotes, count) {
+    field = ""
+    in_quotes = 0
+    count = 0
+    n = length(line)
+    for (i = 1; i <= n; i++) {
+        ch = substr(line, i, 1)
+        if (ch == "\"") {
+            in_quotes = !in_quotes
+        } else if (ch == "," && !in_quotes) {
+            count++
+            columns[count] = field
+            field = ""
+        } else {
+            field = field ch
+        }
+    }
+    count++
+    columns[count] = field
+    return count
+}
+ 
+# header row: find which column number each field we need is in
+NR == 1 {
+    total = split_csv($0)
+    for (i = 1; i <= total; i++) {
+        col_name = columns[i]
+        if (col_name == "Variable_code") col_name = "variable_code"
+        position[tolower(col_name)] = i
+    }
+    print "year,Value,Units,variable_code"
+    next
+}
+ 
+# every other row: pull out just the 4 columns we want, in order
+{
+    split_csv($0)
+    print columns[position["year"]] "," columns[position["value"]] "," columns[position["units"]] "," columns[position["variable_code"]]
+}
+' "$RAW_FILE" > "$TRANSFORMED_FILE"
 
 if [ -f "$TRANSFORMED_FILE" ]; then
     echo "Transform Completed: Data transformed successfully to $TRANSFORMED_FILE"
